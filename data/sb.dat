@@ -1,0 +1,25 @@
+NAME : val1A
+VERTICES : 24
+DEPOT : 1
+REQUIRED EDGES : 39
+NON-REQUIRED EDGES : 0
+VEHICLES : 2
+CAPACITY : 200
+TOTAL COST OF REQUIRED EDGES : 146
+NODES       COST         DEMAND
+1   5   3       4
+1   9   3       9
+1   11   7       12
+1   19   4       13
+1   20   5       13
+2   4   1       2
+2   5   3       12
+2   10   2       5
+3   4   5       14
+3   9   2       4
+3   10   3       7
+4   5   4       3
+5   6   10       19
+5   11   4       9
+
+END

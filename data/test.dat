@@ -1,0 +1,15 @@
+NAME : val7A
+VERTICES : 4
+DEPOT : 1
+REQUIRED EDGES : 5
+NON-REQUIRED EDGES : 0
+VEHICLES : 3
+CAPACITY : 5
+TOTAL COST OF REQUIRED EDGES : 249
+NODES       COST         DEMAND
+1   2   2       2
+1   4   4       1
+2   4   3       2
+4   3   2       2
+1   3   1       1
+END
