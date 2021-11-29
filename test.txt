@@ -1,0 +1,3 @@
+POPU 60
+init 730
+file ./eglese/egl-e1-A.dat

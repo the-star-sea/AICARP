@@ -695,13 +695,17 @@ if __name__ == "__main__":
     for ob in files:
         w.append('./eglese/'+ob)
     while True:
-        fo = open("./test.txt", "w")
+        h=[]
+        fo = open("./test.txt", "wb+",buffering=0)
         POPULATION_SIZE = random.randint(3, 15)*10
         init_population = random.randint(2 * (POPULATION_SIZE/10), 200)*10
-        fo.write("POPU"+str(POPULATION_SIZE))
-        fo.write("init"+str(init_population))
+        fo.write(("POPU "+str(POPULATION_SIZE)+"\n").encode('utf-8'))
+        fo.write(("init "+str(init_population)+"\n").encode('utf-8'))
+        # fo.close()
         for ob in w:
-            fo.write("file" + ob)
+            h=[]
+            # fo = open("./test.txt", "w")
+            fo.write(("file " + ob+"\n").encode('utf-8'))
             q=play(ob)
-            fo.write(str(q))
+            fo.write((str(q)+"\n").encode('utf-8'))
         fo.close()
