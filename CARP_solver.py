@@ -706,6 +706,9 @@ if __name__ == "__main__":
             h=[]
             # fo = open("./test.txt", "w")
             fo.write(("file " + ob+"\n").encode('utf-8'))
-            q=play(ob)
-            fo.write((str(q)+"\n").encode('utf-8'))
+            try:
+                q=play(ob)
+                fo.write((str(q)+"\n").encode('utf-8'))
+            except BaseException:
+                fo.write("wrong ".encode('utf-8'))
         fo.close()
