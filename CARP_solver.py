@@ -8,18 +8,16 @@ import copy
 import random
 import sys
 import time
-import os
 
 # status
 INFTY = 0x3f3f3f3f
 NINFTY = -0x3f3f3f3f
-ALPHA = 0.2
-POPULATION_SIZE = 60  # 100
-init_population = 600  # 1000
+ALPHA = 0.2  # 0.2
+POPULATION_SIZE = 30  # 30
+init_population = 500  # 500
 CPU = 1
 NAME = ""
 VERTICES = None
-
 DEPOT = None
 REQUIRED_EDGES = None
 NON_REQUIRED_EDGES = None
@@ -42,7 +40,6 @@ class Solution:
         self.loads = loads
         # self.costs = costs
         self.total_cost = int(total_cost) if total_cost != np.inf else np.inf
-
         self.capacity = capacity
         self.load_exceed = sum([c - capacity for c in loads if c > capacity])
 
@@ -96,6 +93,11 @@ def set_opt(file_name):
         VEHICLES = int(re.findall(": (.+?)\n", array[5])[0])
         CAPACITY = int(re.findall(": (.+?)\n", array[6])[0])
         TOTAL_COST_OF_REQUIRED_EDGES = int(re.findall(": (.+?)\n", array[7])[0])
+        global POPULATION_SIZE
+        # if VERTICES < 50:
+        #     POPULATION_SIZE = 50
+        # else:
+        #     POPULATION_SIZE=30
         global EDGES, EC, ED, RATIO, SHORTEST_DIS, SHORTEST_PATH, REDGE
         SHORTEST_DIS = np.full((VERTICES + 1, VERTICES + 1), fill_value=INFTY, dtype=int)
         # SHORTEST_PATH = np.full((VERTICES + 1, VERTICES + 1), fill_value=None, dtype=list)
@@ -104,7 +106,6 @@ def set_opt(file_name):
         EC = {}
         ED = {}
         REDGE = []
-        RATIO = 0
         for line in array[9:-1]:
             line = line.strip().split()
             head = int(line[0])
@@ -128,8 +129,6 @@ def set_opt(file_name):
             if demand:
                 REDGE.append((head, tail))
                 REDGE.append((tail, head))
-            RATIO += demand
-        RATIO = VEHICLES / RATIO
 
 
 def init_path():
@@ -149,14 +148,15 @@ def init_path():
 
 # Population initialization
 # -------------------------------------------------------
-def population_init(REDGE, ED, EC, SHORTEST_DIS, num, CAPACITY, DEPOT, seed):
+def population_init(REDGE, ED, EC, SHORTEST_DIS, num, CAPACITY, DEPOT, seed, end, POPULATION_SIZE, VEHICLE):
     population = set()
     # random.seed(seed)
     while len(population) < num:
         sol = RPSH(REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT)
         if random.random() > sol.discard_prop:
             population.add(sol)
-    return population
+    best = searching(population, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, seed, POPULATION_SIZE, end, VEHICLE)
+    return best
 
 
 # -------------------------------------------------------
@@ -282,24 +282,24 @@ def cal_cost(paths, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT):
     return costs
 
 
-def cal_cost1(paths, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT):
-    costs = 0
-    a = []
-    for path in paths:
-        u = 0
-        for edge in path:
-            costs += EC[edge]
-            u += EC[edge]
-        for edge_index in range(len(path) - 1):
-            costs += SHORTEST_DIS[path[edge_index][1]][path[edge_index + 1][0]]
-            u += SHORTEST_DIS[path[edge_index][1]][path[edge_index + 1][0]]
-        costs += SHORTEST_DIS[DEPOT][path[0][0]] + SHORTEST_DIS[path[-1][1]][DEPOT]
-        u += SHORTEST_DIS[DEPOT][path[0][0]] + SHORTEST_DIS[path[-1][1]][DEPOT]
-        a.append(u)
-    return costs, a
+# def cal_cost1(paths, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT):
+#     costs = 0
+#     a = []
+#     for path in paths:
+#         u = 0
+#         for edge in path:
+#             costs += EC[edge]
+#             u += EC[edge]
+#         for edge_index in range(len(path) - 1):
+#             costs += SHORTEST_DIS[path[edge_index][1]][path[edge_index + 1][0]]
+#             u += SHORTEST_DIS[path[edge_index][1]][path[edge_index + 1][0]]
+#         costs += SHORTEST_DIS[DEPOT][path[0][0]] + SHORTEST_DIS[path[-1][1]][DEPOT]
+#         u += SHORTEST_DIS[DEPOT][path[0][0]] + SHORTEST_DIS[path[-1][1]][DEPOT]
+#         a.append(u)
+#     return costs, a
 
 
-def single_insertion(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT):
+def single_insertion(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, VEHICLE):
     # get selected task index
     new_solution = copy.deepcopy(solution)
     routes: list = new_solution.routes
@@ -365,7 +365,7 @@ def single_insertion(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT):
     return new_solution
 
 
-def double_insertion(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT):
+def double_insertion(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, VEHICLE):
     # get selected first task index
     new_solution = copy.deepcopy(solution)
     routes: list = new_solution.routes
@@ -437,7 +437,7 @@ def double_insertion(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT):
     return new_solution
 
 
-def swap(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT):
+def swap(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, VEHICLE):
     new_solution = copy.deepcopy(solution)
     routes: list = new_solution.routes
     # a, _ = cal_cost1(new_solution.routes, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT)
@@ -517,17 +517,49 @@ def swap(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT):
     return new_solution
 
 
-def MS(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT):
+def opt(solution: Solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, VEHICLE):
     new_solution = copy.deepcopy(solution)
+    routes: list = new_solution.routes
+    sai = random.randrange(0, len(routes))  # start <= N < end
+    sa = routes[sai]
+    sti = random.randrange(0, len(sa))  # start <= N < end
+
+    # information used in calculation
+    u, v = sa[sti]
+    task = (u, v)
+    pre_end = sa[sti - 1][1] if sti != 0 else DEPOT
+    next_start = sa[sti + 1][0] if sti != len(sa) - 1 else DEPOT
+    new_solution.total_cost += (SHORTEST_DIS[pre_end][v] - SHORTEST_DIS[pre_end][u] + SHORTEST_DIS[u][next_start] -
+                                SHORTEST_DIS[v][next_start])
+    sa[sti] = (v, u)
+    new_solution.init_valid()
+    # if cal_cost(new_solution.routes, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT)!=new_solution.total_cost:
+    #     print("sb11111111111111111111111111")
+    return new_solution
+
+
+def MS(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, VEHICLE):
+    new_solution: Solution = copy.deepcopy(solution)
     routes: list = new_solution.routes
     while (True):
         # if random.random()>ALPHA:
         #     verhicles = random.randrange(1, int(len(routes)/2))
         # else:
-        verhicles = random.randrange(1, int(len(routes)))
-        vehicle = random.sample(range(0, len(routes)), verhicles)
+        vehicles = random.randrange(1, int(len(routes)))
+        verhicles1 = vehicles
+        # if verhicles>5:
+        #     if random.random() > 0.3:
+        #         verhicles = int(verhicles / 3)
+        if verhicles1 > 3:
+            if random.random() > 0.1:
+                vehicles = int(verhicles1 / 2)
+        # if verhicles1>5:
+        #     if random.random() > 0.2:
+        #         verhicles = int(verhicles1 / 3)
+
+        vehicle = random.sample(range(0, len(routes)), vehicles)
         arcs = []
-        for i in range(verhicles):
+        for i in range(vehicles):
             sai = vehicle[i]
             sa = routes[sai]
             arcs.extend(sa)
@@ -535,10 +567,17 @@ def MS(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT):
         for ob in arct:
             arcs.append(inverseArc(ob))
         tempt_solution = RPSH(arcs, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT)
-        if len(tempt_solution.routes) == verhicles:
+        # if len(tempt_solution.routes) <= vehicles+VEHICLE-len(solution.routes):
+        if len(tempt_solution.routes) <= vehicles:
             break
-    for i in range(verhicles):
-        routes[vehicle[i]] = tempt_solution.routes[i]
+    vehicle = sorted(vehicle, reverse=True)
+    for ob in vehicle:
+        del new_solution.routes[ob]
+        del new_solution.loads[ob]
+    for i in range(len(tempt_solution.routes)):
+        new_solution.routes.append(tempt_solution.routes[i])
+        new_solution.loads.append(tempt_solution.loads[i])
+
         # new_solution.costs[vehicle[i]] = tempt_solution.costs[i]
     new_solution.total_cost = cal_cost(new_solution.routes, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT)
     # print(new_solution.costs[vehicle[0]])
@@ -547,48 +586,52 @@ def MS(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT):
     # if a != new_solution.total_cost:
     #     print("sb")
     new_solution.init_valid()
-    # if cal_cost(new_solution.routes, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT)!=sum(new_solution.costs):
-    #     print("sb11111111111111111111111111")
+
     # print(cal_cost(new_solution.routes, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT) )
     return new_solution
 
 
-def searching(population, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, SEED, POPULATION_SIZE, end):
+def searching(population, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, SEED, POPULATION_SIZE, end, VEHICLE):
     # random.seed(SEED)
     while True:
-        best = search(population, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, POPULATION_SIZE)
+        best = search(population, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, POPULATION_SIZE, VEHICLE)
+        # if SEED == 1001:
+        #     print(SEED, best[0].total_cost)
         if time.time() > end:
             break
     return best
 
 
-def search(population, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, POPULATION_SIZE):
+def search(population, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, POPULATION_SIZE, VEHICLE):
     popu = population.copy()
     for individual in popu:
         if random.random() > individual.discard_prop:
             if random.random() > ALPHA:
-                population.add(local_search(individual, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT))
+                population.add(local_search(individual, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, VEHICLE))
         else:
             population.remove(individual)
     while len(population) > POPULATION_SIZE:
         worst_individual = max(population, key=lambda x: x.total_cost)
         population.remove(worst_individual)
     valid_population = [p for p in population if p.is_valid]
+    # print(len(100*valid_population)/len(population))
+    # if len(valid_population)==0:
+    #     print(len(population))
     best_individual = min(valid_population, key=lambda x: x.total_cost)
     return best_individual, population
 
 
-def local_search(solution: Solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT):
+def local_search(solution: Solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, VEHICLE):
     new_solution = False
     while not new_solution:
-        # [single_insertion, double_insertion, swap]
+        # [single_insertion, double_insertion, swap,opt]
         if solution.is_valid:
-            new_solution = min([move(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT) for move in
-                                [single_insertion, double_insertion, swap]],
+            new_solution = min([move(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, VEHICLE) for move in
+                                [single_insertion, double_insertion, swap, MS]],
                                key=lambda x: x.total_cost)
         else:
-            new_solution = min([move(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT) for move in
-                                [single_insertion, double_insertion, swap, MS]],
+            new_solution = min([move(solution, REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, VEHICLE) for move in
+                                [single_insertion, double_insertion, swap]],
                                key=lambda x: x.total_cost)
         discard_prop = 0 if new_solution.is_valid else 0.6
         if random.random() < discard_prop:
@@ -604,72 +647,75 @@ def command_line(argv):
     return file_name, termination, seed
 
 
-def extend_search(pop, end):
-    result = []
-    # end1 = time.time() + TIME
-    # while end1 < end:
-    #     pool = multiprocessing.Pool()
-    #     for i in range(CPU):
-    #         result.append(
-    #             (pool.apply_async(searching,
-    #                               args=(pop[i], REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, SEED  + i, POPULATION_SIZE,
-    #                                     end1,))))
-    #     pool.close()
-    #     pool.join()
-    #     bests = []
-    #     for i in result:
-    #         bests.extend(list(i.get()[1]))
-    #     random.shuffle(bests)
-    #     m = int(len(bests) / CPU)
-    #     pop = []
-    #     for i in range(0, len(bests), m):
-    #         pop.append(set(bests[i:i + m]))
-    #     end1 += TIME
+#
+# def extend_search(pop, end):
+#     result = []
+#     # end1 = time.time() + TIME
+#     # while end1 < end:
+#     #     pool = multiprocessing.Pool()
+#     #     for i in range(CPU):
+#     #         result.append(
+#     #             (pool.apply_async(searching,
+#     #                               args=(pop[i], REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, SEED  + i, POPULATION_SIZE,
+#     #                                     end1,))))
+#     #     pool.close()
+#     #     pool.join()
+#     #     bests = []
+#     #     for i in result:
+#     #         bests.extend(list(i.get()[1]))
+#     #     random.shuffle(bests)
+#     #     m = int(len(bests) / CPU)
+#     #     pop = []
+#     #     for i in range(0, len(bests), m):
+#     #         pop.append(set(bests[i:i + m]))
+#     #     end1 += TIME
+#     pool = multiprocessing.Pool()
+#     for i in range(CPU):
+#         result.append(
+#             (pool.apply_async(searching,
+#                               args=(
+#                                   pop[i], REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, SEED + i, POPULATION_SIZE,
+#                                   end,))))
+#     pool.close()
+#     pool.join()
+#     bests = []
+#     for i in result:
+#         bests.append(i.get()[0])
+#     best_individual = min(bests, key=lambda x: x.total_cost)
+#     return best_individual
+
+
+def ini_ps(end):
     pool = multiprocessing.Pool()
+    result = []
+    num = int(init_population)
+    population_size = int(POPULATION_SIZE)
     for i in range(CPU):
-        result.append(
-            (pool.apply_async(searching,
-                              args=(
-                                  pop[i], REDGE, ED, EC, SHORTEST_DIS, CAPACITY, DEPOT, SEED + i, POPULATION_SIZE,
-                                  end,))))
+        result.append((pool.apply_async(population_init, args=(
+            REDGE, ED, EC, SHORTEST_DIS, num, CAPACITY, DEPOT, SEED + i, end, population_size, VEHICLES,))))
     pool.close()
     pool.join()
     bests = []
     for i in result:
         bests.append(i.get()[0])
     best_individual = min(bests, key=lambda x: x.total_cost)
+    # sp = []
+    # for ind in result:
+    #     sp.append(ind.get())
     return best_individual
 
 
-def ini_ps():
-    pool = multiprocessing.Pool()
-    result = []
-    num = int(init_population)
-    for i in range(CPU):
-        result.append((pool.apply_async(population_init, args=(
-            REDGE, ED, EC, SHORTEST_DIS, num, CAPACITY, DEPOT, SEED + i,))))
-    pool.close()
-    pool.join()
-    sp = []
-    for ind in result:
-        sp.append(ind.get())
-    return sp
-
-
-# if __name__ == "__main__":
-def play(file_name):
+if __name__ == "__main__":
     start = time.time()
     global SEED
-    # file_name, termination, SEED = command_line(sys.argv[1:])
-    termination=120
-    SEED=1000
-
+    file_name, termination, SEED = command_line(sys.argv[1:])
     random.seed(SEED)
     set_opt(file_name)
     init_path()
-    pop = ini_ps()
     end = start + termination - 0.5
-    best = extend_search(pop, end)
+    best = ini_ps(end)
+
+    # best = extend_search(pop, end)
 
     result = ""
     routes = []
@@ -678,37 +724,6 @@ def play(file_name):
     for item in routes:
         result += str(item) + ","
     result = result.replace(' ', '')
-    # print("s", result[:-1])
-    # print("q " + str(best.total_cost))
+    print("s", result[:-1])
+    print("q " + str(best.total_cost))
     un_time = (time.time() - start)
-    return str(best.total_cost)
-
-def file_name(file_dir):
-    for  files in os.walk(file_dir):
-        return files# 当前路径下所有非目录子文件
-
-
-if __name__ == "__main__":
-
-    files=file_name('./eglese')[2]
-    w=[]
-    for ob in files:
-        w.append('./eglese/'+ob)
-    while True:
-        h=[]
-        fo = open("./test.txt", "wb+",buffering=0)
-        POPULATION_SIZE = random.randint(3, 15)*10
-        init_population = random.randint(2 * (POPULATION_SIZE/10), 200)*10
-        fo.write(("POPU "+str(POPULATION_SIZE)+"\n").encode('utf-8'))
-        fo.write(("init "+str(init_population)+"\n").encode('utf-8'))
-        # fo.close()
-        for ob in w:
-            h=[]
-            # fo = open("./test.txt", "w")
-            fo.write(("file " + ob+"\n").encode('utf-8'))
-            try:
-                q=play(ob)
-                fo.write((str(q)+"\n").encode('utf-8'))
-            except BaseException:
-                fo.write("wrong ".encode('utf-8'))
-        fo.close()
